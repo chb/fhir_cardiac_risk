@@ -1,0 +1,12 @@
+apply plugin:'jetty'
+
+jettyRun {
+    httpPort = 8000
+	webAppSourceDirectory = projectDir
+    contextPath = 'smartapp'
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.6'
+}
+

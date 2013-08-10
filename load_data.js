@@ -1,9 +1,34 @@
+//implement JSON.stringify serialization
+JSON.stringify = JSON.stringify || function (obj) {
+    var t = typeof (obj);
+    if (t != "object" || obj === null) {
+        // simple data type
+        if (t == "string") obj = '"'+obj+'"';
+        return String(obj);
+    }
+    else {
+        // recurse array or object
+        var n, v, json = [], arr = (obj && obj.constructor == Array);
+        for (n in obj) {
+            v = obj[n]; t = typeof(v);
+            if (t == "string") v = '"'+v+'"';
+            else if (t == "object" && v !== null) v = JSON.stringify(v);
+            json.push((arr ? "" : '"' + n + '":') + String(v));
+        }
+        return (arr ? "[" : "{") + String(json) + (arr ? "]" : "}");
+    }
+};
+
+
 (function(window){
 
+  if ("" == getParameterByName("personId")) {
+    alert("Please include a 'personId' parameter in your request.");
+  }
   var urls = {
     base: "http://hl7connect.healthintersections.com.au/svc/fhir",
-    lab_feed: "/labreport/search.xml?patient.subject.id={personId}&format=application/json",
-    patient: "/person/@{personId}?format=application/json"
+    lab_feed: "/diagnosticreport/search?subject._id={personId}&_format=json",
+    patient: "/patient/@{personId}?_format=json"
   },
   m = JSONSelect.match;
 
@@ -29,17 +54,17 @@
 
       var patient = patient_result[0],
       labs = lab_result[0],
-      gender = patient.Person.gender.text === 'F' ? "female" : "male",
-      dob = new XDate(patient.Person.dob.value),
+      gender = m(':root > :root > :has(.system .value:val("http://hl7.org/fhir/v3/AdministrativeGender"))', patient.Patient.gender)[0].code.value === 'F' ? "female" : "male",
+	  dob = (patient.Patient.birthDate ? new XDate(patient.Patient.birthDate.value) : new XDate()), 
       age = Math.floor(dob.diffYears(new XDate())),
-      officialName = m(':has(.use:val("official"))', patient.Person.name)[0],
-      fname = m('.type:val("given")  ~ .value', officialName)[0],
-      lname = m('.type:val("family") ~ .value', officialName)[0],
+      officialName = m(':root > :has(.use .value:val("official"))', patient.Patient.name)[0],
+      fname = officialName.family[0].value,
+      lname = officialName.given[0].value,
 
       by_loinc = function(loincs){
         var ret = [];
         $.each(arguments, function(i,l){
-          ret = ret.concat(m('.result > :has(.code:val("'+l+'")) ', labs));
+          ret = ret.concat(m('.contained > :has(.value:val("'+l+'")) ', labs));
         });
         return ret;
       };
@@ -48,15 +73,36 @@
       var cholesterol = by_loinc("14647-2", "2093-3");
       var hdl = by_loinc("2085-9");
 
+      var missingData = [];
+      if (hscrp.length == 0) {
+        missingData = missingData.concat(["hs-CRP"]);
+      }
+      if (cholesterol.length == 0) {
+        missingData = missingData.concat(["Cholesterol"]);
+      }
+      if (hdl.length == 0) {
+        missingData = missingData.concat(["HDL"]);
+      }
+	  if (missingData.length > 0) {
+        var missingDataMessage = "No results (";
+        var delimiter = "";
+        for(var i = 0; i < missingData.length; i++) {
+          missingDataMessage += delimiter + missingData[i];
+          delimiter = ", ";
+        }
+        missingDataMessage += ") for " + fname + " " + lname + ".";
+        alert(missingDataMessage);
+      }
+
       p = defaultPatient();
       p.birthday = {value:dob};
       p.age = {value:age};
       p.gender={value:gender};
       p.givenName={value:fname};
       p.familyName={value:lname};
-      p.hsCRP={value:hscrp_in_mg_per_l(hscrp[0])};
-      p.cholesterol={value:cholesterol_in_mg_per_dl(cholesterol[0])};
-      p.HDL={value:cholesterol_in_mg_per_dl(hdl[0])};
+      p.hsCRP={value:hscrp_in_mg_per_l(hscrp[0].Observation)};
+      p.cholesterol={value:cholesterol_in_mg_per_dl(cholesterol[0].Observation)};
+      p.HDL={value:cholesterol_in_mg_per_dl(hdl[0].Observation)};
       p.LDL = {value:p.cholesterol.value-p.HDL.value};
 
       ret.resolve(p);
@@ -72,20 +118,30 @@
     }
   };
 
+  /**
+   * Unit conversion formula.
+   * See values at http://www.amamanualofstyle.com/page/si-conversion-calculator
+   */
   cholesterol_in_mg_per_dl = function(v){
-    if (v.valueQuantity.units === "mg/dL"){
-      return parseFloat(v.valueQuantity.value);
+    if (v.valueQuantity.units.value === "mg/dL"){
+      return parseFloat(v.valueQuantity.value.value);
     }
-    else if (v.valueQuantity.units === "mmol/L"){
-      return parseFloat(v.valueQuantity.value)/ 0.026;
+    else if (v.valueQuantity.units.value === "mmol/L"){
+      return parseFloat(v.valueQuantity.value.value)/ 0.026;
     }
-
     throw "Unanticipated cholesterol units: " + v.valueQuantity.units;
   };
 
+  /**
+   * Unit conversion formula.
+   * See values at http://www.amamanualofstyle.com/page/si-conversion-calculator
+   */
   hscrp_in_mg_per_l = function(v){
-    if (v.valueQuantity.units === "mg/L"){
-      return parseFloat(v.valueQuantity.value);
+    if (v.valueQuantity.units.value === "mg/L"){
+      return parseFloat(v.valueQuantity.value.value);
+    }
+    else if (v.valueQuantity.units.value === "mmol/L"){
+      return parseFloat(v.valueQuantity.value.value)/ 0.10;
     }
     throw "Unanticipated hsCRP units: " + v.valueQuantity.units;
   };
