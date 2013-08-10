@@ -54,10 +54,10 @@ JSON.stringify = JSON.stringify || function (obj) {
 
       var patient = patient_result[0],
       labs = lab_result[0],
-      gender = m(':root > :root > :has(.system .value:val("http://hl7.org/fhir/v3/AdministrativeGender"))', patient.Patient.details.gender)[0].code.value === 'F' ? "female" : "male",
-	  dob = (patient.Patient.details.birthDate ? new XDate(patient.Patient.details.birthDate.value) : new XDate()), 
+      gender = m(':root > :root > :has(.system .value:val("http://hl7.org/fhir/v3/AdministrativeGender"))', patient.Patient.gender)[0].code.value === 'F' ? "female" : "male",
+	  dob = (patient.Patient.birthDate ? new XDate(patient.Patient.birthDate.value) : new XDate()), 
       age = Math.floor(dob.diffYears(new XDate())),
-      officialName = m(':root > :has(.use .value:val("official"))', patient.Patient.details.name)[0],
+      officialName = m(':root > :has(.use .value:val("official"))', patient.Patient.name)[0],
       fname = officialName.family[0].value,
       lname = officialName.given[0].value,
 
